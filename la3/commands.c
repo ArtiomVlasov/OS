@@ -104,15 +104,6 @@ void delete_directory(const char *path)
     {
         perror("Error with closing directory.");
     }
-
-    // if (rmdir(path) == 0)
-    // {
-    //     printf("Directory '%s' deleted successfully.\n", path);
-    // }
-    // else
-    // {
-    //     perror("Failed to delete directory");
-    // }
 }
 
 void create_file(const char *path)
