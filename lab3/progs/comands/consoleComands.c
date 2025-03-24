@@ -19,7 +19,7 @@ void create_directory(const char *path)
     }
 }
 
-void list_directory(const char *path)
+void list_directory(char *path)
 {
     DIR *dir = opendir(path);
     if (!dir)
@@ -104,6 +104,15 @@ void delete_directory(const char *path)
     {
         perror("Error with closing directory.");
     }
+
+    // if (rmdir(path) == 0)
+    // {
+    //     printf("Directory '%s' deleted successfully.\n", path);
+    // }
+    // else
+    // {
+    //     perror("Failed to delete directory");
+    // }
 }
 
 void create_file(const char *path)
@@ -183,7 +192,6 @@ void read_symlink_target(const char *linkpath)
     ssize_t len = readlink(linkpath, buffer, sizeof(buffer) - 1);
     if (len >= 0)
     {
-        printf("HERE\n");
         buffer[len] = '\0';
         read_file(buffer);
     }
@@ -275,43 +283,62 @@ void print_help()
     printf("  --help                      - Show this help message\n");
 }
 
+char *get_command(char *comand){
+    int len = strlen(comand);
+
+    int last_slash;
+    for (size_t i = len - 1; i > 0; i--)
+    {
+        if(comand[i] == '/'){
+            last_slash = i;
+            break;
+        }
+    }
+    char *right_comand = malloc((len - last_slash) * sizeof(char)); 
+    for (size_t i = last_slash+1; i < len; i++)
+    {
+        right_comand[i - last_slash-1] = comand[i];
+    }
+    return right_comand;
+}
+
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
-    {
-        fprintf(stderr, "Usage: %s <command> [arguments]\n", argv[0]);
-        print_help();
-        return EXIT_FAILURE;
-    }
-
-    const char *command = argv[1];
-
-    if (strcmp(command, "--help") == 0)
+    const char *command = get_command(argv[0]);
+    if (strcmp(command, "help") == 0)
     {
         print_help();
         return EXIT_SUCCESS;
     }
-
-    if (command[0] == 'l') // костыль говна
+    if (argc < 2)
     {
-        if (strcmp(command, "ln") == 0 && argc == 5 && strcmp(argv[2], "-s") == 0)
+        fprintf(stderr, "Usage: %s <command> [arguments]\n", command);
+        print_help();
+        return EXIT_FAILURE;
+    }
+    if (argc > 4)
+    {
+        perror("Too many args");
+        return EXIT_FAILURE;
+    }
+
+    if (strcmp(command, "ln") == 0 && argc == 4 && strcmp(argv[1], "-s") == 0)
+    {
+        if (argc < 3)
         {
-            if (argc < 4)
-            {
-                perror("Usage: ln -s <target> <linkpath> \n");
-                return EXIT_FAILURE;
-            }
-            create_symlink(argv[3], argv[4]);
+            perror("Usage: ln -s <target> <linkpath> \n");
+            return EXIT_FAILURE;
         }
-        else if (strcmp(command, "ln") == 0)
+        create_symlink(argv[2], argv[3]);
+    }
+    else if (strcmp(command, "ln") == 0)
+    {
+        if (argc < 2)
         {
-            if (argc < 3)
-            {
-                perror("Usage: ln <target> <linkpath>\n");
-                return EXIT_FAILURE;
-            }
-            create_hardlink(argv[2], argv[3]);
+            perror("Usage: ln <target> <linkpath>\n");
+            return EXIT_FAILURE;
         }
+        create_hardlink(argv[1], argv[2]);
     }
 
     else if (strcmp(command, "mkdir") == 0)
@@ -321,17 +348,18 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: madir <path>\n");
             return EXIT_FAILURE;
         }
-        create_directory(argv[2]);
+        create_directory(argv[1]);
     }
 
     else if (strcmp(command, "ls") == 0)
     {
+        printf("curently in ls");
         if (argc < 2)
         {
             fprintf(stderr, "Usage: ls <path>\n");
             return EXIT_FAILURE;
         }
-        list_directory(argv[2]);
+        list_directory(argv[1]);
     }
 
     else if (strcmp(command, "rmdir") == 0)
@@ -341,7 +369,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: rmdir <path>\n");
             return EXIT_FAILURE;
         }
-        delete_directory(argv[2]);
+        delete_directory(argv[1]);
     }
     else if (strcmp(command, "rm") == 0)
     {
@@ -350,7 +378,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: rm <path>\n");
             return EXIT_FAILURE;
         }
-        delete_file(argv[2]);
+        delete_file(argv[1]);
     }
     else if (strcmp(command, "readlink") == 0)
     {
@@ -359,7 +387,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: readlink <path>\n");
             return EXIT_FAILURE;
         }
-        read_symlink(argv[2]);
+        read_symlink(argv[1]);
     }
     else if (strcmp(command, "symlink_target") == 0)
     {
@@ -368,7 +396,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: symlink_target <path>\n");
             return EXIT_FAILURE;
         }
-        read_symlink_target(argv[2]);
+        read_symlink_target(argv[1]);
     }
     else if (strcmp(command, "rmHard") == 0)
     {
@@ -377,7 +405,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: rmHard <path>\n");
             return EXIT_FAILURE;
         }
-        delete_hardlink(argv[2]);
+        delete_hardlink(argv[1]);
     }
 
     else if (strcmp(command, "touch") == 0)
@@ -387,7 +415,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: touch <path>\n");
             return EXIT_FAILURE;
         }
-        create_file(argv[2]);
+        create_file(argv[1]);
     }
 
     else if (strcmp(command, "cat") == 0)
@@ -397,16 +425,16 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: cat <path>\n");
             return EXIT_FAILURE;
         }
-        read_file(argv[2]);
+        read_file(argv[1]);
     }
     else if (strcmp(command, "chmod") == 0)
     {
-        if (argc < 4)
+        if (argc < 3)
         {
             fprintf(stderr, "Usage: chmod <path> <mode>\n");
             return EXIT_FAILURE;
         }
-        change_permissions(argv[2], strtol(argv[3], NULL, 8));
+        change_permissions(argv[1], strtol(argv[2], NULL, 8));
     }
 
     else if (strcmp(command, "stat") == 0)
@@ -416,7 +444,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: stat <path>\n");
             return EXIT_FAILURE;
         }
-        show_permissions(argv[2]);
+        show_permissions(argv[1]);
     }
 
     else if (strcmp(command, "unlink") == 0)
@@ -426,7 +454,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: unlink <path>\n");
             return EXIT_FAILURE;
         }
-        delete_symlink(argv[2]);
+        delete_symlink(argv[1]);
     }
     else
     {
