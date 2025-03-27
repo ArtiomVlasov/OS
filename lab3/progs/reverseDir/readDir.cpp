@@ -63,38 +63,37 @@ void reverseFileName(char *name)
     }
 }
 
-// Функция для копирования содержимого файла "задом наперед"
 int reverseCopyFile(const char *src_path, const char *dest_path)
 {
     struct stat src_stat;
-    if (stat(src_path, &src_stat) < 0) {
+    if (stat(src_path, &src_stat) < 0)
+    {
         perror("stat error");
         return -1;
     }
+
+    mode_t original_mode = src_stat.st_mode;
+
+    if (chmod(src_path, original_mode | S_IWUSR | S_IRUSR) < 0)
+    {
+        perror("Failed to set temporary permissions on source file");
+        return -1;
+    }
+
     int src_file = open(src_path, O_RDONLY);
     if (src_file < 0)
     {
-        if (chmod(src_path, S_IRUSR) < 0) {
-            perror("Error opening source file");
-            return -1;
-        }
-        src_file = open(src_path, O_RDONLY);
+        perror("Error opening source file");
+        chmod(src_path, original_mode);
+        return -1;
     }
-    struct stat statistic;
-    int dest_file;
-    if (stat(src_path, &statistic) == 0)
-    {
-        printf("dir mode %o\n", statistic.st_mode);
-        dest_file = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, statistic.st_mode);
-    }
-    else
-    {
-        dest_file = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    }
+
+    int dest_file = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, original_mode | S_IWUSR | S_IRUSR);
     if (dest_file < 0)
     {
         perror("Error creating destination file");
         close(src_file);
+        chmod(src_path, original_mode);
         return -1;
     }
 
@@ -104,14 +103,18 @@ int reverseCopyFile(const char *src_path, const char *dest_path)
         perror("Error seeking source file");
         close(src_file);
         close(dest_file);
+        chmod(src_path, original_mode);
+        chmod(dest_path, original_mode);
         return -1;
     }
 
-    char buffer[4096];
+    int len = 4096;
+    char buffer[len];
     ssize_t bytes_read;
+
     while (file_size > 0)
     {
-        ssize_t to_read = file_size > sizeof(buffer) ? sizeof(buffer) : file_size;
+        ssize_t to_read = file_size > len ? len : file_size;
         file_size -= to_read;
 
         if (lseek(src_file, file_size, SEEK_SET) < 0)
@@ -119,6 +122,8 @@ int reverseCopyFile(const char *src_path, const char *dest_path)
             perror("Error seeking source file");
             close(src_file);
             close(dest_file);
+            chmod(src_path, original_mode);
+            chmod(dest_path, original_mode);
             return -1;
         }
 
@@ -128,6 +133,8 @@ int reverseCopyFile(const char *src_path, const char *dest_path)
             perror("Error reading source file");
             close(src_file);
             close(dest_file);
+            chmod(src_path, original_mode);
+            chmod(dest_path, original_mode);
             return -1;
         }
 
@@ -138,96 +145,115 @@ int reverseCopyFile(const char *src_path, const char *dest_path)
             buffer[bytes_read - i - 1] = temp;
         }
 
-        if (write(dest_file, buffer, bytes_read) < 0)
+        ssize_t total_written = 0;
+        while (total_written < bytes_read)
         {
-            perror("Error writing to destination file");
-            close(src_file);
-            close(dest_file);
-            return -1;
+            ssize_t bytes_written = write(dest_file, buffer + total_written, bytes_read - total_written);
+            if (bytes_written < 0)
+            {
+                perror("Error writing to destination file");
+                close(src_file);
+                close(dest_file);
+                chmod(src_path, original_mode);
+                chmod(dest_path, original_mode);
+                return -1;
+            }
+            total_written += bytes_written;
         }
     }
-    if (chmod(src_path, src_stat.st_mode) < 0) {
-        perror("Error change mode");
-        return -1;
-    }
+
     close(src_file);
     close(dest_file);
+
+    if (chmod(src_path, original_mode) < 0)
+    {
+        perror("Failed to restore permissions on source file");
+    }
+    if (chmod(dest_path, original_mode) < 0)
+    {
+        perror("Failed to set permissions on destination file");
+    }
+
     return 0;
 }
 
 void copyDirectoryReverse(const char *src_dir_path, const char *dest_dir_path)
 {
+    struct stat src_stat;
+    if (stat(src_dir_path, &src_stat) < 0)
+    {
+        perror("Failed to stat source directory");
+        return;
+    }
+
+    mode_t original_mode = src_stat.st_mode;
+
+    if (chmod(src_dir_path, original_mode | S_IWUSR | S_IRUSR | S_IXUSR) < 0)
+    {
+        perror("Failed to set temporary permissions on source directory");
+        return;
+    }
+
     DIR *src_dir = opendir(src_dir_path);
     if (!src_dir)
     {
-        perror("Error opening source directory");
+        perror("Failed to open source directory");
+        chmod(src_dir_path, original_mode); 
         return;
     }
-    // FIXME пееписать копирование прав доступа
-    // FIXME переписать комирование прав доступа для фала даже если он нет права на чтение
-    struct stat st;
-    int status;
-    if (stat(src_dir_path, &st) == 0)
+
+    if (mkdir(dest_dir_path, original_mode| S_IWUSR | S_IRUSR | S_IXUSR) < 0 && errno != EEXIST)
     {
-        // printf("dir mode %o\n", st.st_mode);
-        status = mkdir(dest_dir_path, st.st_mode);
-    }
-    else
-    {
-        status = mkdir(dest_dir_path, 0755);
-    }
-    if (status < 0)
-    {
-        if (errno != EEXIST)
-        {
-            perror("Error creating destination directory");
-            exit(EXIT_FAILURE);
-        }
+        perror("Failed to create destination directory");
+        closedir(src_dir);
+        chmod(src_dir_path, original_mode); 
+        return;
     }
 
     struct dirent *entry;
     while ((entry = readdir(src_dir)) != NULL)
     {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        {
+            continue;
+        }
+
+        char src_path[4096], dest_path[4096];
+        snprintf(src_path, sizeof(src_path), "%s/%s", src_dir_path, entry->d_name);
+
+        char reversed_name[256];
+        strncpy(reversed_name, entry->d_name, sizeof(reversed_name) - 1);
+        reversed_name[sizeof(reversed_name) - 1] = '\0';
+        reverseFileName(reversed_name);
+
+        snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_dir_path, reversed_name);
+
         if (entry->d_type == DT_REG)
-        { // Только регулярные файлы
-            char src_file_path[4096];
-
-            snprintf(src_file_path, sizeof(src_file_path), "%s/%s", src_dir_path, entry->d_name);
-
-            char reversed_name[256];
-            strncpy(reversed_name, entry->d_name, sizeof(reversed_name) - 1);
-            reversed_name[sizeof(reversed_name) - 1] = '\0';
-            reverseFileName(reversed_name);
-
-            char dest_file_path[4096];
-            snprintf(dest_file_path, sizeof(dest_file_path), "%s/%s", dest_dir_path, reversed_name);
-
-            if (reverseCopyFile(src_file_path, dest_file_path) < 0)
+        {
+            if (reverseCopyFile(src_path, dest_path) < 0)
             {
-                fprintf(stderr, "Failed to copy file: %s\n", src_file_path);
+                fprintf(stderr, "Failed to copy file: %s\n", src_path);
             }
         }
-        else if (entry->d_type == DT_DIR && (entry->d_name[0] != '.' && entry->d_name[1] != '.' && entry->d_name[2] != '\0'))
+        else if (entry->d_type == DT_DIR)
         {
-            char src_dir[4096];
-
-            snprintf(src_dir, sizeof(src_dir), "%s/%s", src_dir_path, entry->d_name);
-
-            char reversed_name[256];
-            strncpy(reversed_name, entry->d_name, sizeof(reversed_name) - 1);
-            reversed_name[sizeof(reversed_name) - 1] = '\0';
-            reverseDirName(reversed_name);
-
-            char dest_dir[4096];
-            snprintf(dest_dir, sizeof(dest_dir), "%s/%s", dest_dir_path, reversed_name);
-            copyDirectoryReverse(src_dir, dest_dir);
+            copyDirectoryReverse(src_path, dest_path);
         }
     }
 
     closedir(src_dir);
+
+    if (chmod(src_dir_path, original_mode) < 0)
+    {
+        perror("Failed to restore permissions on source directory");
+    }
+
+    if (chmod(dest_dir_path, original_mode) < 0)
+    {
+        perror("Failed to set permissions on destination directory");
+    }
 }
 
-// FIXME рекурсивное копирование директорий
 
 int main(int argc, char *argv[])
 {
@@ -236,10 +262,11 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: %s <directory_path>\n", argv[0]);
         return 1;
     }
+    int len = 4096;
+    char dest_dir_path[len];
 
-    char dest_dir_path[4096];
-    strncpy(dest_dir_path, argv[1], sizeof(dest_dir_path) - 1);
-    dest_dir_path[sizeof(dest_dir_path) - 1] = '\0';
+    strncpy(dest_dir_path, argv[1], len - 1);
+    dest_dir_path[len - 1] = '\0';
     reverseDirName(dest_dir_path);
     copyDirectoryReverse(argv[1], dest_dir_path);
 
