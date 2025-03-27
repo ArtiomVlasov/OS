@@ -6,17 +6,20 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <malloc.h>
+#include <libgen.h>
+
+#define Read_Target_Symlink_Mode 1
+#define Read_Symlink_Mode 0
+
 
 void create_directory(const char *path)
 {
-    if (mkdir(path, 0755) == 0)
-    {
-        printf("Directory '%s' created successfully.\n", path);
-    }
-    else
+    if (mkdir(path, 0755) != 0)
     {
         perror("Failed to create directory");
+        return;
     }
+    printf("Directory '%s' created successfully.\n", path);
 }
 
 void list_directory(char *path)
@@ -42,14 +45,8 @@ void delete_directory(const char *path)
     printf("Trying to delete dir by path: %s \n", path);
     size_t path_length;
     DIR *dir;
-    struct stat stat_path, stat_entry;
     struct dirent *entry = NULL;
-    stat(path, &stat_path);
-    if (S_ISDIR(stat_path.st_mode) == 0)
-    {
-        fprintf(stderr, "This path %s is not dir. \n", path);
-        return;
-    }
+
     dir = opendir(path);
     if (dir == NULL)
     {
@@ -62,26 +59,18 @@ void delete_directory(const char *path)
         {
             continue;
         }
-        char *full_path = calloc(path_length + 1 + strlen(entry->d_name) + 1, sizeof(char));
-        if (full_path == NULL)
-        {
-            fprintf(stderr, "This path %s is NULL. \n", full_path);
-            return;
-        }
-        strcpy(full_path, path);
-        strcat(full_path, "/");
-        strcat(full_path, entry->d_name);
+        char full_path[path_length + 1 + strlen(entry->d_name) + 1];
+        sprintf(full_path, "%s/%s", basename(path), entry->d_name);
+        struct stat stat_entry;
         stat(full_path, &stat_entry);
-        if (S_ISDIR(stat_entry.st_mode) != 0)
+        if (S_ISDIR(stat_entry.st_mode))
         {
             delete_directory(full_path);
-            free(full_path);
             continue;
         }
         if (unlink(full_path) == 0)
         {
             printf("The file %s was removed.\n", full_path);
-            free(full_path);
         }
         else
         {
@@ -94,39 +83,28 @@ void delete_directory(const char *path)
     if (rm != 0)
     {
         perror("Directory wasn't deleted.\n");
+        return;
     }
-    else
-    {
-        printf("Directory %s was deleted successfully! \n", path);
-    }
+    printf("Directory %s was deleted successfully! \n", path);
+
     int close = closedir(dir);
     if (close == -1)
     {
         perror("Error with closing directory.");
+        return;
     }
-
-    // if (rmdir(path) == 0)
-    // {
-    //     printf("Directory '%s' deleted successfully.\n", path);
-    // }
-    // else
-    // {
-    //     perror("Failed to delete directory");
-    // }
 }
 
 void create_file(const char *path)
 {
     int fd = open(path, O_CREAT | O_WRONLY, 0644);
-    if (fd >= 0)
-    {
-        printf("File '%s' created successfully.\n", path);
-        close(fd);
-    }
-    else
+    if (fd < 0)
     {
         perror("Failed to create file");
+        return;
     }
+    printf("File '%s' created successfully.\n", path);
+    close(fd);
 }
 
 void read_file(const char *path)
@@ -140,127 +118,141 @@ void read_file(const char *path)
 
     char buffer[1024];
     printf("Contents of file '%s':\n", path);
-    while (fgets(buffer, sizeof(buffer), file))
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
     {
-        printf("%s\n", buffer);
+        printf("%s", buffer);
+    }
+    if (ferror(file))
+    {
+        perror("Error reading file");
     }
     fclose(file);
 }
 
 void delete_file(const char *path)
 {
-    if (unlink(path) == 0)
-    {
-        printf("File '%s' deleted successfully.\n", path);
-    }
-    else
+    if (unlink(path) != 0)
     {
         perror("Failed to delete file");
+        return;
     }
+    printf("File '%s' deleted successfully.\n", path);
 }
 
 void create_symlink(const char *target, const char *linkpath)
 {
-    if (symlink(target, linkpath) == 0)
-    {
-        printf("Symlink '%s' -> '%s' created successfully.\n", linkpath, target);
-    }
-    else
+    if (symlink(target, linkpath) != 0)
     {
         perror("Failed to create symlink");
+        return;
     }
+    printf("Symlink '%s' -> '%s' created successfully.\n", linkpath, target);
 }
 
-void read_symlink(const char *linkpath)
+void read_symlink(const char *linkpath, int mode)
 {
-    char buffer[1024];
-    ssize_t len = readlink(linkpath, buffer, sizeof(buffer) - 1);
-    if (len >= 0)
-    {
-        buffer[len] = '\0';
-        printf("Symlink '%s' points to '%s'.\n", linkpath, buffer);
+    struct stat link_stat;
+    if(stat(linkpath, &link_stat)<0){
+        perror("Failed to get stat of link");
+        return;
     }
-    else
+    char *buffer = malloc(link_stat.st_size + 1);
+    if (!buffer) {
+        perror("Failed to allocate memory");
+        return;
+    }
+    ssize_t len = readlink(linkpath, buffer, sizeof(buffer) - 1);
+    if (len < 0)
     {
         perror("Failed to read symlink");
+        return;
     }
-}
-
-void read_symlink_target(const char *linkpath)
-{
-    char buffer[1024];
-    ssize_t len = readlink(linkpath, buffer, sizeof(buffer) - 1);
-    if (len >= 0)
-    {
-        buffer[len] = '\0';
+    buffer[len] = '\0';
+    printf("Symlink '%s' points to '%s'.\n", linkpath, buffer);
+    if(mode == 1){
         read_file(buffer);
     }
-    else
-    {
-        perror("Failed to read symlink target");
-    }
+    free(buffer);
 }
 
 void delete_symlink(const char *linkpath)
 {
-    if (unlink(linkpath) == 0)
-    {
-        printf("Symlink '%s' deleted successfully.\n", linkpath);
-    }
-    else
+    if (unlink(linkpath) != 0)
     {
         perror("Failed to delete symlink");
+        return;
     }
+    printf("Symlink '%s' deleted successfully.\n", linkpath);
 }
 
 void create_hardlink(const char *target, const char *linkpath)
 {
-    if (link(target, linkpath) == 0)
-    {
-        printf("Hardlink '%s' -> '%s' created successfully.\n", linkpath, target);
-    }
-    else
+    if (link(target, linkpath) != 0)
     {
         perror("Failed to create hardlink");
+        return;
     }
+    printf("Hardlink '%s' -> '%s' created successfully.\n", linkpath, target);
 }
 
 void delete_hardlink(const char *linkpath)
 {
-    if (unlink(linkpath) == 0)
-    {
-        printf("Hardlink '%s' deleted successfully.\n", linkpath);
-    }
-    else
+    if (unlink(linkpath) != 0)
     {
         perror("Failed to delete Hardlink");
+        return;
     }
+    printf("Hardlink '%s' deleted successfully.\n", linkpath);
+}
+
+void convertPermission(mode_t permission, char *convertedPermission)
+{
+
+    if (permission & S_IRUSR)
+        convertedPermission[0] = 'r';
+    if (permission & S_IWUSR)
+        convertedPermission[1] = 'w';
+    if (permission & S_IXUSR)
+        convertedPermission[2] = 'x';
+
+    if (permission & S_IRGRP)
+        convertedPermission[3] = 'r';
+    if (permission & S_IWGRP)
+        convertedPermission[4] = 'w';
+    if (permission & S_IXGRP)
+        convertedPermission[5] = 'x';
+
+    if (permission & S_IRGRP)
+        convertedPermission[6] = 'r';
+    if (permission & S_IWGRP)
+        convertedPermission[7] = 'w';
+    if (permission & S_IXGRP)
+        convertedPermission[8] = 'x';
 }
 
 void show_permissions(const char *path)
 {
     struct stat st;
-    if (stat(path, &st) == 0)
-    {
-        printf("Permissions of '%s': %o\n", path, st.st_mode);
-        printf("Number of hard links: %ld\n", st.st_nlink);
-    }
-    else
+    if (stat(path, &st) != 0)
     {
         perror("Failed to get file permissions");
+        return;
     }
+    char convertedPermission[10] = "----------";
+    convertPermission(st.st_mode, convertedPermission);
+    printf("Permissions of '%s': %o/%s\n", path, st.st_mode, convertedPermission);
+    printf("Number of hard links: %ld\n", st.st_nlink);
 }
 
 void change_permissions(const char *path, mode_t mode)
 {
-    if (chmod(path, mode) == 0)
-    {
-        printf("Permissions of '%s' changed to %o successfully.\n", path, mode);
-    }
-    else
+    if (chmod(path, mode) != 0)
     {
         perror("Failed to change file permissions");
+        return;
     }
+    printf("Permissions of '%s' changed to %o successfully.\n", path, mode);
 }
 
 void print_help()
@@ -283,28 +275,31 @@ void print_help()
     printf("  --help                      - Show this help message\n");
 }
 
-char *get_command(char *comand){
+void get_command(char *comand)
+{
     int len = strlen(comand);
 
-    int last_slash;
+    int last_slash = -1;
     for (size_t i = len - 1; i > 0; i--)
     {
-        if(comand[i] == '/'){
+        if (comand[i] == '/')
+        {
             last_slash = i;
             break;
         }
     }
-    char *right_comand = malloc((len - last_slash) * sizeof(char)); 
-    for (size_t i = last_slash+1; i < len; i++)
+    if (last_slash != -1)
     {
-        right_comand[i - last_slash-1] = comand[i];
+        memmove(comand, comand + last_slash + 1, len - last_slash);
     }
-    return right_comand;
+    comand[len - last_slash - 1] = '\0';
 }
 
 int main(int argc, char *argv[])
 {
-    const char *command = get_command(argv[0]);
+    char *command = argv[0];
+    // basename(command);
+    get_command(command);
     if (strcmp(command, "help") == 0)
     {
         print_help();
@@ -324,11 +319,6 @@ int main(int argc, char *argv[])
 
     if (strcmp(command, "ln") == 0 && argc == 4 && strcmp(argv[1], "-s") == 0)
     {
-        if (argc < 3)
-        {
-            perror("Usage: ln -s <target> <linkpath> \n");
-            return EXIT_FAILURE;
-        }
         create_symlink(argv[2], argv[3]);
     }
     else if (strcmp(command, "ln") == 0)
@@ -387,7 +377,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: readlink <path>\n");
             return EXIT_FAILURE;
         }
-        read_symlink(argv[1]);
+        read_symlink(argv[1], Read_Symlink_Mode);
     }
     else if (strcmp(command, "symlink_target") == 0)
     {
@@ -396,7 +386,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Usage: symlink_target <path>\n");
             return EXIT_FAILURE;
         }
-        read_symlink_target(argv[1]);
+        read_symlink(argv[1], Read_Target_Symlink_Mode);
     }
     else if (strcmp(command, "rmHard") == 0)
     {
