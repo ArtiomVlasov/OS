@@ -40,13 +40,13 @@ void list_directory(char *path)
     closedir(dir);
 }
 
-void delete_directory(const char *path)
+void delete_directory(char *path)
 {
     printf("Trying to delete dir by path: %s \n", path);
     size_t path_length;
     DIR *dir;
     struct dirent *entry = NULL;
-
+    
     dir = opendir(path);
     if (dir == NULL)
     {
@@ -153,15 +153,11 @@ void create_symlink(const char *target, const char *linkpath)
 void read_symlink(const char *linkpath, int mode)
 {
     struct stat link_stat;
-    if(stat(linkpath, &link_stat)<0){
+    if(lstat(linkpath, &link_stat)<0){
         perror("Failed to get stat of link");
         return;
     }
-    char *buffer = malloc(link_stat.st_size + 1);
-    if (!buffer) {
-        perror("Failed to allocate memory");
-        return;
-    }
+    char buffer[link_stat.st_size + 1];
     ssize_t len = readlink(linkpath, buffer, sizeof(buffer) - 1);
     if (len < 0)
     {
@@ -173,7 +169,6 @@ void read_symlink(const char *linkpath, int mode)
     if(mode == 1){
         read_file(buffer);
     }
-    free(buffer);
 }
 
 void delete_symlink(const char *linkpath)
@@ -279,7 +274,7 @@ void get_command(char *comand)
 {
     int len = strlen(comand);
 
-    int last_slash = -1;
+    int last_slash = 0;
     for (size_t i = len - 1; i > 0; i--)
     {
         if (comand[i] == '/')
@@ -305,7 +300,7 @@ int main(int argc, char *argv[])
         print_help();
         return EXIT_SUCCESS;
     }
-    if (argc < 2)
+    if (argc < 1)
     {
         fprintf(stderr, "Usage: %s <command> [arguments]\n", command);
         print_help();
@@ -343,11 +338,10 @@ int main(int argc, char *argv[])
 
     else if (strcmp(command, "ls") == 0)
     {
-        printf("curently in ls");
         if (argc < 2)
         {
-            fprintf(stderr, "Usage: ls <path>\n");
-            return EXIT_FAILURE;
+            list_directory("./");
+            return EXIT_SUCCESS;
         }
         list_directory(argv[1]);
     }
