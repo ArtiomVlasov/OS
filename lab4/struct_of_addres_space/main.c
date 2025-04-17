@@ -71,15 +71,16 @@ int env_varible() {
 int main() {
     pid_t pid = getpid();
     printf("PID of self  process : %d \n\n", pid);
-//     print_vars();
+    print_vars();
+
 
 // //    void *someRegion = mmap(NULL, 1, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-//    sleep(3000);
+   sleep(3000);
 
 //    printf("Variable address in main: %p \n\n", (void *) variable_address());
 //    sleep(30);
     // buffer_address();
     // sleep(30);
-    env_varible();
+    // env_varible();
     return 0;
 }

@@ -25,12 +25,15 @@ void heap_loading() {
     for(int i = 0; i< 200; i++) {
         array[i] = malloc(4096*(i+1));
         printf("%d: Array pointer : %p \n",i, (void *) &array[i]);
-        sleep(1);
+        // sleep(1);
     }
+    printf("\n--------------- Unmapping ---------------\n");
+    sleep(10);
     for (int i = 0; i < 200; i++)
     {
         free(array[i]);
     }
+    sleep(20);
 }
 
 void create_changePermition_tryToReadWrite() {
@@ -78,20 +81,21 @@ void unmap_4_6_pages() {
 
     size_t partial_size = 3 * PAGE_SIZE;
     void *partial_addr = region_addr + 3 * PAGE_SIZE;
-    printf("Unmapping a part of the region at addr %p with size %zu bytes. \n", partial_addr, partial_size);
-    if (munmap(partial_addr, partial_size) == -1) {
-        perror("munmap");
-        exit(1);
-    }
+    printf("Changing permission");
+    // printf("Unmapping a part of the region at addr %p with size %zu bytes. \n", partial_addr, partial_size);
+    // if (munmap(partial_addr, partial_size) == -1) {
+    //     perror("munmap");
+    //     exit(1);
+    // }
     sleep(10);
 }
 
 int main() {
     printf("My pid: %d \n", getpid());
-    sleep(100000);
+    sleep(10);
     // overloading_stack();
-    heap_loading();
-    create_changePermission_tryToReadWrite();
+    // heap_loading();
+    // create_changePermission_tryToReadWrite();
     unmap_4_6_pages();
     return 0;
 }
