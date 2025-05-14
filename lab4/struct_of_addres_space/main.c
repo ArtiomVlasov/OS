@@ -63,24 +63,28 @@ void buffer_address() {
 }
 
 int env_varible() {
-    printf("Environment variable value: %s\n", getenv("TEST_ENV_VAR"));
+    printf("Environment variable value: %s  %p\n", getenv("TEST_ENV_VAR"), getenv("TEST_ENV_VAR"));
+
     setenv("TEST_ENV_VAR", "set value in environment value", 1);
-    printf("New environment variable value: %s\n", getenv("TEST_ENV_VAR"));
+    
+
+    printf("New environment variable value: %s  %p\n", getenv("TEST_ENV_VAR"), getenv("TEST_ENV_VAR"));
 }
 
 int main() {
     pid_t pid = getpid();
     printf("PID of self  process : %d \n\n", pid);
-    print_vars();
+    // print_vars();
 
 
 // //    void *someRegion = mmap(NULL, 1, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-   sleep(3000);
+//    sleep(3000);
 
 //    printf("Variable address in main: %p \n\n", (void *) variable_address());
 //    sleep(30);
     // buffer_address();
     // sleep(30);
-    // env_varible();
+    env_varible();
+    sleep(30000);
     return 0;
 }

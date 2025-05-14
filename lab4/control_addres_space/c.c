@@ -95,7 +95,7 @@ int main() {
     sleep(10);
     // overloading_stack();
     // heap_loading();
-    // create_changePermission_tryToReadWrite();
-    unmap_4_6_pages();
+    create_changePermition_tryToReadWrite();
+    // unmap_4_6_pages();
     return 0;
 }
