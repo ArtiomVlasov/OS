@@ -3,11 +3,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 
-int global_var = 22;
-
 int main() {
-    int local_var = 203;
-    printf("P_proc: global var %d and its address %p \n", global_var, &global_var);
+    int local_var = 1;
     printf("P_proc: local var %d and its address %p \n", local_var, &local_var);
     pid_t pid_parent = getpid();
     printf("My pid: %d \n", pid_parent);
@@ -18,20 +15,15 @@ int main() {
     } else if (pid_fork == 0) {
         printf("Child pid : %d \n", getpid());
         printf("Parent pid: %d \n", getppid());
-        printf("C_proc: global var %d and its address %p \n", global_var, &global_var);
         printf("C_proc: local var %d and its address %p \n", local_var, &local_var);
-        global_var = 20;
-        local_var = 207;
-        printf("C_proc: global var %d and its address %p \n", global_var, &global_var);
+        local_var = 2;
         printf("C_proc: local var %d and its address %p \n", local_var, &local_var);
         sleep(200);
         exit(2);
     } else {
-        printf("P_proc: global var %d and its address %p \n", global_var, &global_var);
         printf("P_proc: local var %d and its address %p \n", local_var, &local_var);
         sleep(100);
         printf("Finish parent process \n");
     }
-    printf("P_proc: global var %d and its address %p \n", global_var, &global_var);
     return 0;
 }
