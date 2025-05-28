@@ -20,12 +20,6 @@ void *allocator() {
         exit(1);
     }
 
-    if (ftruncate(fd, SIZE_STACK) == -1) {
-        perror("ftruncate");
-        close(fd);
-        exit(EXIT_FAILURE);
-    }
-
     void *memory = mmap(NULL, SIZE_STACK, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (memory == MAP_FAILED) {
         perror("mmap");
@@ -72,12 +66,6 @@ int main() {
 
     if (waitpid(pid, NULL, 0) == -1) {
         perror("waitpid");
-        munmap(memory, SIZE_STACK);
-        exit(EXIT_FAILURE);
-    }
-
-    if (msync(memory, SIZE_STACK, MS_SYNC) == -1) {
-        perror("msync");
         munmap(memory, SIZE_STACK);
         exit(EXIT_FAILURE);
     }
