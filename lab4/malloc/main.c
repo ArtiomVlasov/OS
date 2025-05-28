@@ -2,6 +2,7 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #define HEAP (1024 * 1024)
 void *heap_start = NULL;
@@ -69,8 +70,50 @@ void initialize() {
     memory_blocks->next = NULL;
 }
 
+
+// Тест для проверки merge_blocks
+void test_merge_blocks() {
+    initialize();
+
+    // Выделяем три блока памяти
+    void *ptr1 = my_malloc(100);
+    void *ptr2 = my_malloc(100);
+    void *ptr3 = my_malloc(100);
+
+    // Освобождаем первый и второй блоки
+    my_free(ptr1);
+    my_free(ptr2);
+
+    // Проверяем, что первый и второй блоки объединены
+    block *current = memory_blocks;
+    while (current != NULL) {
+        if (current == (block *)((char *)ptr1 - sizeof(block))) {
+            assert(current->free == 1);
+            assert(current->size >= 200); // Проверяем, что размеры объединены
+            break;
+        }
+        current = current->next;
+    }
+
+    // Освобождаем третий блок и проверяем, что все три блока объединены
+    my_free(ptr3);
+    current = memory_blocks;
+    while (current != NULL) {
+        if (current == (block *)((char *)ptr1 - sizeof(block))) {
+            assert(current->free == 1);
+            assert(current->size >= 300); // Проверяем, что размеры всех трех блоков объединены
+            break;
+        }
+        current = current->next;
+    }
+
+    printf("merge_blocks test passed\n");
+}
+
 int main() {
     initialize();
+
+    test_merge_blocks();
     char *ptr1 = (char *) my_malloc(100);
     if (ptr1) {
         strcpy(ptr1, "Hello, world!");
@@ -79,20 +122,22 @@ int main() {
 
     char *ptr2 = (char *) my_malloc(200);
     if (ptr2) {
-        strcpy(ptr2, "Bye, my pretty nice world");
+        strcpy(ptr2, "Bye world");
         fprintf(stdout, "ptr2: %s %p\n", ptr2, ptr2);
     }
     char *ptr3 = (char *) my_malloc(HEAP);
     fprintf(stdout, "ptr3: %s %p \n", ptr3, ptr3);
+
+    
     my_free(ptr1);
     char *ptr4 = my_malloc(70);
     char *ptr5 = my_malloc(60);
     if (ptr4) {
-        strcpy(ptr4, "Bye, my pretty nice world");
+        strcpy(ptr4, "Bye nice world");
         fprintf(stdout, "ptr4: %s %p\n", ptr4, ptr4);
     }
     if (ptr5) {
-        strcpy(ptr5, "Bye, my pretty nice world");
+        strcpy(ptr5, "Bye world");
         fprintf(stdout, "ptr5: %s %p\n", ptr5, ptr5);
     }
     my_free(ptr2);
