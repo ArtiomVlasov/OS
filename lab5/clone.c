@@ -9,7 +9,7 @@
 #include <sys/wait.h>
 #include <string.h>
 
-#define SIZE_STACK (5*1024)
+#define SIZE_STACK (10*1024)
 #define RECURSION 10
 #define FILENAME "file.txt"
 
@@ -39,7 +39,7 @@ void *allocator() {
 void recursion(int iter) {
     char str[] = "hello world";
     printf("next iter\n");
-    sleep(15);
+//    sleep(15);
 
     if (iter > 0) {
         recursion(iter - 1);
