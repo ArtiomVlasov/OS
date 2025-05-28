@@ -9,7 +9,7 @@ int main() {
     pid_t pid_parent = getpid();
     printf("My pid: %d \n", pid_parent);
     pid_t pid_fork = fork();
-    sleep(10);
+    sleep(1000);
     if (pid_fork == -1) {
         perror("Fork");
         return 1;
