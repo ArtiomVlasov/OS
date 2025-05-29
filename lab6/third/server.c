@@ -25,7 +25,7 @@ int add_client(int client_sockets[], int size, int client_socket) {
             return i;
         }
     }
-    return -1; 
+    return -1;
 }
 
 void remove_client(int client_sockets[], char client_buffers[][BUFFER_SIZE], int index) {
@@ -34,7 +34,7 @@ void remove_client(int client_sockets[], char client_buffers[][BUFFER_SIZE], int
     memset(client_buffers[index], 0, BUFFER_SIZE);
 }
 
-int setup_fd_sets(fd_set *read_fds, fd_set *write_fds, int server_socket, int client_sockets[], int size) {
+int setup_fd_sets(fd_set *read_fds, fd_set *write_fds, int server_socket, int client_sockets[], char client_buffers[][BUFFER_SIZE], int size) {
     FD_ZERO(read_fds);
     FD_ZERO(write_fds);
     FD_SET(server_socket, read_fds);
@@ -42,8 +42,14 @@ int setup_fd_sets(fd_set *read_fds, fd_set *write_fds, int server_socket, int cl
 
     for (int i = 0; i < size; i++) {
         if (client_sockets[i] > 0) {
-            FD_SET(client_sockets[i], read_fds);
-            FD_SET(client_sockets[i], write_fds);
+            // Добавляем в read_fds только если буфер клиента пуст
+            if (strlen(client_buffers[i]) == 0) {
+                FD_SET(client_sockets[i], read_fds);
+            }
+            // Добавляем в write_fds, если есть данные для отправки
+            if (strlen(client_buffers[i]) > 0) {
+                FD_SET(client_sockets[i], write_fds);
+            }
             if (client_sockets[i] > max_fd) {
                 max_fd = client_sockets[i];
             }
@@ -78,17 +84,18 @@ void handle_client_data(int client_sockets[], char client_buffers[][BUFFER_SIZE]
         printf("Connection closed by client (fd %d)\n", client_sockets[index]);
         remove_client(client_sockets, client_buffers, index);
     } else {
+        client_buffers[index][read_size] = '\0';
         printf("Data received from client %d: %s\n", client_sockets[index], client_buffers[index]);
     }
 }
 
-void send_to_clients(int client_sockets[], char client_buffers[][BUFFER_SIZE], fd_set *write_fds) {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
+void send_to_clients(int client_sockets[], char client_buffers[][BUFFER_SIZE], fd_set *write_fds, int size) {
+    for (int i = 0; i < size; i++) {
         if (client_sockets[i] > 0 && FD_ISSET(client_sockets[i], write_fds)) {
             if (strlen(client_buffers[i]) > 0) {
                 send(client_sockets[i], client_buffers[i], strlen(client_buffers[i]), 0);
                 printf("Data sent to client %d: %s\n", client_sockets[i], client_buffers[i]);
-                memset(client_buffers[i], 0, BUFFER_SIZE);
+                memset(client_buffers[i], 0, BUFFER_SIZE); // Очищаем буфер после отправки
             }
         }
     }
@@ -102,7 +109,7 @@ void run_server(int server_socket) {
     initialize_client_sockets(client_sockets, client_buffers, MAX_CLIENTS);
 
     while (1) {
-        int max_fd = setup_fd_sets(&read_fds, &write_fds, server_socket, client_sockets, MAX_CLIENTS);
+        int max_fd = setup_fd_sets(&read_fds, &write_fds, server_socket, client_sockets, client_buffers, MAX_CLIENTS);
 
         int activity = select(max_fd + 1, &read_fds, &write_fds, NULL, NULL);
 
@@ -111,7 +118,6 @@ void run_server(int server_socket) {
             exit(EXIT_FAILURE);
         }
 
-        // Проверяем серверный сокет
         if (FD_ISSET(server_socket, &read_fds)) {
             handle_new_connection(server_socket, client_sockets, client_buffers);
         }
@@ -122,7 +128,7 @@ void run_server(int server_socket) {
             }
         }
 
-        send_to_clients(client_sockets, client_buffers, &write_fds);
+        send_to_clients(client_sockets, client_buffers, &write_fds, MAX_CLIENTS);
     }
 }
 
