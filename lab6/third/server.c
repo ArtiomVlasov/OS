@@ -7,13 +7,14 @@
 #include <string.h>
 #include <sys/select.h>
 
-#define PORT 1334
+#define PORT 1234
 #define BUFFER_SIZE 1024
 #define MAX_CLIENTS 100
 
-void initialize_client_sockets(int client_sockets[], int size) {
+void initialize_client_sockets(int client_sockets[], char client_buffers[][BUFFER_SIZE], int size) {
     for (int i = 0; i < size; i++) {
         client_sockets[i] = -1;
+        memset(client_buffers[i], 0, BUFFER_SIZE);
     }
 }
 
@@ -21,25 +22,28 @@ int add_client(int client_sockets[], int size, int client_socket) {
     for (int i = 0; i < size; i++) {
         if (client_sockets[i] == -1) {
             client_sockets[i] = client_socket;
-            return 0;
+            return i;
         }
     }
     return -1; 
 }
 
-void remove_client(int client_sockets[], int index) {
+void remove_client(int client_sockets[], char client_buffers[][BUFFER_SIZE], int index) {
     close(client_sockets[index]);
     client_sockets[index] = -1;
+    memset(client_buffers[index], 0, BUFFER_SIZE);
 }
 
-int setup_fd_set(fd_set *read_fds, int server_socket, int client_sockets[], int size) {
+int setup_fd_sets(fd_set *read_fds, fd_set *write_fds, int server_socket, int client_sockets[], int size) {
     FD_ZERO(read_fds);
+    FD_ZERO(write_fds);
     FD_SET(server_socket, read_fds);
     int max_fd = server_socket;
 
     for (int i = 0; i < size; i++) {
         if (client_sockets[i] > 0) {
             FD_SET(client_sockets[i], read_fds);
+            FD_SET(client_sockets[i], write_fds);
             if (client_sockets[i] > max_fd) {
                 max_fd = client_sockets[i];
             }
@@ -49,7 +53,7 @@ int setup_fd_set(fd_set *read_fds, int server_socket, int client_sockets[], int 
     return max_fd;
 }
 
-void handle_new_connection(int server_socket, int client_sockets[]) {
+void handle_new_connection(int server_socket, int client_sockets[], char client_buffers[][BUFFER_SIZE]) {
     struct sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
@@ -67,43 +71,58 @@ void handle_new_connection(int server_socket, int client_sockets[]) {
     }
 }
 
-void handle_client_data(int client_sockets[], int index) {
-    char buffer[BUFFER_SIZE];
-    int read_size = recv(client_sockets[index], buffer, BUFFER_SIZE, 0);
+void handle_client_data(int client_sockets[], char client_buffers[][BUFFER_SIZE], int index) {
+    int read_size = recv(client_sockets[index], client_buffers[index], BUFFER_SIZE, 0);
 
     if (read_size <= 0) {
         printf("Connection closed by client (fd %d)\n", client_sockets[index]);
-        remove_client(client_sockets, index);
+        remove_client(client_sockets, client_buffers, index);
     } else {
-        send(client_sockets[index], buffer, read_size, 0);
+        printf("Data received from client %d: %s\n", client_sockets[index], client_buffers[index]);
+    }
+}
+
+void send_to_clients(int client_sockets[], char client_buffers[][BUFFER_SIZE], fd_set *write_fds) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (client_sockets[i] > 0 && FD_ISSET(client_sockets[i], write_fds)) {
+            if (strlen(client_buffers[i]) > 0) {
+                send(client_sockets[i], client_buffers[i], strlen(client_buffers[i]), 0);
+                printf("Data sent to client %d: %s\n", client_sockets[i], client_buffers[i]);
+                memset(client_buffers[i], 0, BUFFER_SIZE);
+            }
+        }
     }
 }
 
 void run_server(int server_socket) {
     int client_sockets[MAX_CLIENTS];
-    fd_set read_fds;
+    char client_buffers[MAX_CLIENTS][BUFFER_SIZE];
+    fd_set read_fds, write_fds;
 
-    initialize_client_sockets(client_sockets, MAX_CLIENTS);
+    initialize_client_sockets(client_sockets, client_buffers, MAX_CLIENTS);
 
     while (1) {
-        int max_fd = setup_fd_set(&read_fds, server_socket, client_sockets, MAX_CLIENTS);
+        int max_fd = setup_fd_sets(&read_fds, &write_fds, server_socket, client_sockets, MAX_CLIENTS);
 
-        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+        int activity = select(max_fd + 1, &read_fds, &write_fds, NULL, NULL);
 
         if (activity < 0) {
             perror("Select error");
             exit(EXIT_FAILURE);
         }
 
+        // Проверяем серверный сокет
         if (FD_ISSET(server_socket, &read_fds)) {
-            handle_new_connection(server_socket, client_sockets);
+            handle_new_connection(server_socket, client_sockets, client_buffers);
         }
 
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (client_sockets[i] > 0 && FD_ISSET(client_sockets[i], &read_fds)) {
-                handle_client_data(client_sockets, i);
+                handle_client_data(client_sockets, client_buffers, i);
             }
         }
+
+        send_to_clients(client_sockets, client_buffers, &write_fds);
     }
 }
 
