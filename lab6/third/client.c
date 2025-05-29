@@ -7,7 +7,7 @@
 #include <signal.h>
 
 #define SERVER_IP "127.0.0.1"
-#define PORT 8080
+#define PORT 1334
 #define BUF_SIZE 1024
 
 int client_socket;

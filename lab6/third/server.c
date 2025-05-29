@@ -4,82 +4,115 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/select.h>
-#include <errno.h>
-#include <signal.h>
 #include <string.h>
+#include <sys/select.h>
 
-#define PORT 8080
+#define PORT 1334
 #define BUFFER_SIZE 1024
-#define MAX_CLIENTS 32
+#define MAX_CLIENTS 100
 
-int server_socket;
-int client_sockets[MAX_CLIENTS] = {0};
-
-void sigint_handler(int sig) {
-    printf("\nServer shutting down...\n");
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (client_sockets[i] != 0) {
-            send(client_sockets[i], "Server is shutting down.\n", 26, 0);
-            close(client_sockets[i]);
-        }
-    }
-    close(server_socket);
-    exit(0);
-}
-
-void handle_client_message(int sd) {
-    char buffer[BUFFER_SIZE];
-    int valread = read(sd, buffer, BUFFER_SIZE);
-
-    if (valread < 0) {
-        perror("Read error");
-        close(sd);
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (client_sockets[i] == sd) {
-                client_sockets[i] = 0;
-                break;
-            }
-        }
-    } else if (valread == 0) {
-        struct sockaddr_in client_addr;
-        socklen_t client_addr_len = sizeof(client_addr);
-        getpeername(sd, (struct sockaddr*)&client_addr, &client_addr_len);
-        printf("Host disconnected | ip %s | port %d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        close(sd);
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (client_sockets[i] == sd) {
-                client_sockets[i] = 0;
-                break;
-            }
-        }
-    } else {
-        if (valread < BUFFER_SIZE) {
-            buffer[valread] = '\0';
-        }
-        if (send(sd, buffer, valread, 0) != valread) {
-            perror("Send error");
-        }
+void initialize_client_sockets(int client_sockets[], int size) {
+    for (int i = 0; i < size; i++) {
+        client_sockets[i] = -1;
     }
 }
 
-int main() {
-    struct sockaddr_in server_addr, client_addr;
+int add_client(int client_sockets[], int size, int client_socket) {
+    for (int i = 0; i < size; i++) {
+        if (client_sockets[i] == -1) {
+            client_sockets[i] = client_socket;
+            return 0;
+        }
+    }
+    return -1; 
+}
+
+void remove_client(int client_sockets[], int index) {
+    close(client_sockets[index]);
+    client_sockets[index] = -1;
+}
+
+int setup_fd_set(fd_set *read_fds, int server_socket, int client_sockets[], int size) {
+    FD_ZERO(read_fds);
+    FD_SET(server_socket, read_fds);
+    int max_fd = server_socket;
+
+    for (int i = 0; i < size; i++) {
+        if (client_sockets[i] > 0) {
+            FD_SET(client_sockets[i], read_fds);
+            if (client_sockets[i] > max_fd) {
+                max_fd = client_sockets[i];
+            }
+        }
+    }
+
+    return max_fd;
+}
+
+void handle_new_connection(int server_socket, int client_sockets[]) {
+    struct sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
-    fd_set read_fds;
-    int max_sd, new_socket, activity;
-    int opt = 1;
+    int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
 
-    signal(SIGINT, sigint_handler);
+    if (client_socket < 0) {
+        perror("Accept error");
+        return;
+    }
+
+    printf("New connection %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+
+    if (add_client(client_sockets, MAX_CLIENTS, client_socket) < 0) {
+        printf("Too many connections\n");
+        close(client_socket);
+    }
+}
+
+void handle_client_data(int client_sockets[], int index) {
+    char buffer[BUFFER_SIZE];
+    int read_size = recv(client_sockets[index], buffer, BUFFER_SIZE, 0);
+
+    if (read_size <= 0) {
+        printf("Connection closed by client (fd %d)\n", client_sockets[index]);
+        remove_client(client_sockets, index);
+    } else {
+        send(client_sockets[index], buffer, read_size, 0);
+    }
+}
+
+void run_server(int server_socket) {
+    int client_sockets[MAX_CLIENTS];
+    fd_set read_fds;
+
+    initialize_client_sockets(client_sockets, MAX_CLIENTS);
+
+    while (1) {
+        int max_fd = setup_fd_set(&read_fds, server_socket, client_sockets, MAX_CLIENTS);
+
+        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+
+        if (activity < 0) {
+            perror("Select error");
+            exit(EXIT_FAILURE);
+        }
+
+        if (FD_ISSET(server_socket, &read_fds)) {
+            handle_new_connection(server_socket, client_sockets);
+        }
+
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (client_sockets[i] > 0 && FD_ISSET(client_sockets[i], &read_fds)) {
+                handle_client_data(client_sockets, i);
+            }
+        }
+    }
+}
+
+int setup_server_socket() {
+    int server_socket;
+    struct sockaddr_in server_addr;
 
     if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Socket create error");
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("Setsockopt error");
-        close(server_socket);
         exit(EXIT_FAILURE);
     }
 
@@ -87,8 +120,8 @@ int main() {
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(PORT);
 
-    if (bind(server_socket, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
-        perror("Server bind error");
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind error");
         close(server_socket);
         exit(EXIT_FAILURE);
     }
@@ -99,60 +132,14 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    printf("TCP-server started. Listening on port: %d\n", PORT);
+    printf("TCP-server started. Listening port: %d\n", PORT);
 
-    while (1) {
-        FD_ZERO(&read_fds);
-        FD_SET(server_socket, &read_fds);
-        max_sd = server_socket;
+    return server_socket;
+}
 
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            int sd = client_sockets[i];
-            if (sd > 0) {
-                FD_SET(sd, &read_fds);
-            }
-            if (sd > max_sd) {
-                max_sd = sd;
-            }
-        }
-
-        activity = select(max_sd + 1, &read_fds, NULL, NULL, NULL);
-
-        if (activity < 0 && errno != EINTR) {
-            perror("Select error");
-        }
-
-        if (FD_ISSET(server_socket, &read_fds)) {
-            if ((new_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_addr_len)) < 0) {
-                perror("Accept error");
-                continue;
-            }
-
-            printf("New connection %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-
-            int added = 0;
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (client_sockets[i] == 0) {
-                    client_sockets[i] = new_socket;
-                    printf("Socket added to the sockets list as %d\n", i);
-                    added = 1;
-                    break;
-                }
-            }
-
-            if (!added) {
-                printf("Max clients reached. Connection from %s:%d refused.\n", inet_ntoa(client_addr.sin_addr),
-                       ntohs(client_addr.sin_port));
-                send(new_socket, "Server is full. Try again later.\n", 33, 0);
-                close(new_socket);
-            }
-        }
-
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            int sd = client_sockets[i];
-            if (FD_ISSET(sd, &read_fds)) {
-                handle_client_message(sd);
-            }
-        }
-    }
+int main() {
+    int server_socket = setup_server_socket();
+    run_server(server_socket);
+    close(server_socket);
+    return 0;
 }
