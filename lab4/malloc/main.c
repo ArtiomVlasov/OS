@@ -135,7 +135,7 @@ int main() {
     // // }
     // // my_free(ptr2);
 
-     void *ptr1 = my_malloc(100);
+    void *ptr1 = my_malloc(100);
     void *ptr2 = my_malloc(100);
     void *ptr3 = my_malloc(100);
 
