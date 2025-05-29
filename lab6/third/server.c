@@ -51,11 +51,9 @@ int setup_fd_sets(fd_set *read_fds, fd_set *write_fds, int server_socket,
 
     for (int i = 0; i < size; i++) {
         if (client_sockets[i] > 0) {
-            // Читаем только если буфер пуст (то есть все данные отправлены)
             if (client_buffers[i].length == client_buffers[i].sent_bytes) {
                 FD_SET(client_sockets[i], read_fds);
             }
-            // Пишем, если есть данные для отправки
             if (client_buffers[i].length > client_buffers[i].sent_bytes) {
                 FD_SET(client_sockets[i], write_fds);
             }
@@ -114,7 +112,6 @@ void send_to_clients(int client_sockets[], ClientBuffer client_buffers[], fd_set
                     remove_client(client_sockets, client_buffers, i);
                 } else {
                     client_buffers[i].sent_bytes += sent;
-                    // Если отправили все данные, обнуляем буфер
                     if (client_buffers[i].sent_bytes == client_buffers[i].length) {
                         client_buffers[i].length = 0;
                         client_buffers[i].sent_bytes = 0;
